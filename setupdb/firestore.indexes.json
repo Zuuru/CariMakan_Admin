@@ -1,0 +1,108 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "restaurants",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "avg_rating", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "menus",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "resto_id", "order": "ASCENDING" },
+        { "fieldPath": "tersedia", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "resto_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "resto_id", "order": "ASCENDING" },
+        { "fieldPath": "payment_status", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "resto_id", "order": "ASCENDING" },
+        { "fieldPath": "status_antrian", "order": "ASCENDING" },
+        { "fieldPath": "nomor_antrian", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "order_items",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "order_id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "order_review_tags",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "order_id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "review_tags",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kategori_id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "resto_badges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "resto_id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reward_poin",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "promo_vouchers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kode", "order": "ASCENDING" },
+        { "fieldPath": "is_active", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "promo_vouchers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "resto_id", "order": "ASCENDING" },
+        { "fieldPath": "is_active", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
