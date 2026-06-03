@@ -12,7 +12,7 @@ interface RestoDetail {
   lat: number;
   lng: number;
   jam_buka: string;
-  status: 'pending' | 'aktif' | 'suspend';
+  status: 'pending' | 'aktif' | 'suspend' | 'rejected';
   url_whatsapp: string;
   avg_rating: number;
   total_review: number;
@@ -63,26 +63,52 @@ export default function RestosTab({ searchQuery }: RestosTabProps) {
 
   const [statusFilter, setStatusFilter] = React.useState<'semua' | 'pending' | 'aktif' | 'suspend'>('semua');
 
-  const handleVerify = (id: string, action: 'approve' | 'reject') => {
-    setRestos((prev) =>
-      prev.map((r) => {
-        if (r.id === id) {
-          return { ...r, status: action === 'approve' ? 'aktif' : 'suspend' };
-        }
-        return r;
-      })
-    );
+  const handleVerify = async (id: string, action: 'approve' | 'reject') => {
+    try {
+      const newStatus = action === 'approve' ? 'aktif' : 'rejected';
+      const { updateRestaurantStatus } = await import('@/app/actions');
+      const res = await updateRestaurantStatus(id, newStatus);
+      if (res.success) {
+        setRestos((prev) =>
+          prev.map((r) => {
+            if (r.id === id) {
+              return { ...r, status: newStatus };
+            }
+            return r;
+          })
+        );
+      } else {
+        alert('Gagal memverifikasi restoran: ' + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Terjadi kesalahan saat memverifikasi restoran');
+    }
   };
 
-  const handleToggleSuspend = (id: string) => {
-    setRestos((prev) =>
-      prev.map((r) => {
-        if (r.id === id) {
-          return { ...r, status: r.status === 'aktif' ? 'suspend' : 'aktif' };
-        }
-        return r;
-      })
-    );
+  const handleToggleSuspend = async (id: string) => {
+    try {
+      const resto = restos.find((r) => r.id === id);
+      if (!resto) return;
+      const newStatus = resto.status === 'aktif' ? 'suspend' : 'aktif';
+      const { updateRestaurantStatus } = await import('@/app/actions');
+      const res = await updateRestaurantStatus(id, newStatus);
+      if (res.success) {
+        setRestos((prev) =>
+          prev.map((r) => {
+            if (r.id === id) {
+              return { ...r, status: newStatus };
+            }
+            return r;
+          })
+        );
+      } else {
+        alert('Gagal mengubah status restoran: ' + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Terjadi kesalahan saat mengubah status restoran');
+    }
   };
 
   const filteredRestos = restos.filter((r) => {

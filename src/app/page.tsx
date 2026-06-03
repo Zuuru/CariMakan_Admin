@@ -185,7 +185,7 @@ export default function Home() {
               </div>
 
               {/* Profit SVG Graph Chart */}
-              <ProfitChart rawProfit={dashboardData.rawProfit} />
+              <ProfitChart />
 
               {/* Resto Profit performance table & notepad memo side-by-side */}
               <RestoTable searchQuery={searchQuery} />

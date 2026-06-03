@@ -1,6 +1,6 @@
 'use server';
 
-import { adminDb } from '@/lib/firebaseAdmin';
+import { adminDb, admin } from '@/lib/firebaseAdmin';
 
 export async function verifyAdminLogin(email: string, password: string) {
   try {
@@ -18,24 +18,41 @@ export async function verifyAdminLogin(email: string, password: string) {
     if (adminUser.password !== password) {
       return { success: false, error: 'Password salah.' };
     }
-    
+
     if (adminUser.status === 'suspend') {
       return { success: false, error: 'Akun admin ini telah di-suspend.' };
     }
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       data: {
         uid: snapshot.docs[0].id,
         nama: adminUser.nama,
         email: adminUser.email,
         role: adminUser.role,
-      } 
+      }
     };
   } catch (error: any) {
     console.error('Error verifying admin login:', error);
     return { success: false, error: error.message };
   }
+}
+
+// Helper: convert semua Firestore Timestamp di sebuah object menjadi plain value
+function serializeFirestoreDoc(data: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value && typeof value === 'object' && typeof value.toDate === 'function') {
+      // Firestore Timestamp
+      result[key] = value.toDate().toISOString();
+    } else if (value && typeof value === 'object' && '_seconds' in value && '_nanoseconds' in value) {
+      // Plain object bentuk Timestamp (sudah di-destructure sebelumnya)
+      result[key] = new Date(value._seconds * 1000).toISOString();
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
 }
 
 export async function fetchUsers() {
@@ -45,8 +62,7 @@ export async function fetchUsers() {
       const data = doc.data();
       return {
         id: doc.id,
-        ...data,
-        created_at: data.created_at ? data.created_at.toDate().toISOString() : null,
+        ...serializeFirestoreDoc(data),
       };
     });
     return { success: true, data: users };
@@ -56,13 +72,25 @@ export async function fetchUsers() {
   }
 }
 
+
 export async function createUser(data: any) {
   try {
-    const docRef = await adminDb.collection('users').add({
-      ...data,
+    // 1. Buat akun Firebase Authentication
+    const userRecord = await admin.auth().createUser({
+      email: data.email,
+      password: data.password,
+      displayName: data.nama,
+    });
+
+    // 2. Simpan profil user di Firestore dengan UID dari Firebase Auth sebagai ID dokumen
+    const { password, ...firestoreData } = data;
+    await adminDb.collection('users').doc(userRecord.uid).set({
+      ...firestoreData,
+      password: password, // simpan juga password plaintext agar admin bisa lihat
       created_at: new Date(),
     });
-    return { success: true, id: docRef.id };
+
+    return { success: true, id: userRecord.uid };
   } catch (error: any) {
     console.error('Error creating user:', error);
     return { success: false, error: error.message };
@@ -71,6 +99,33 @@ export async function createUser(data: any) {
 
 export async function updateUser(id: string, data: any) {
   try {
+    // 1. Sinkronisasi data ke Firebase Authentication
+    const authUpdate: admin.auth.UpdateRequest = {};
+    if (data.email) authUpdate.email = data.email;
+    if (data.password) authUpdate.password = data.password;
+    if (data.nama) authUpdate.displayName = data.nama;
+
+    if (Object.keys(authUpdate).length > 0) {
+      try {
+        await admin.auth().updateUser(id, authUpdate);
+      } catch (authError: any) {
+        if (authError.code === 'auth/user-not-found') {
+          // User lama yang belum punya akun Firebase Auth — buat sekarang
+          const firestoreDoc = await adminDb.collection('users').doc(id).get();
+          const existing = firestoreDoc.data() || {};
+          await admin.auth().createUser({
+            uid: id,
+            email: data.email || existing.email,
+            password: data.password || existing.password,
+            displayName: data.nama || existing.nama,
+          });
+        } else {
+          throw authError;
+        }
+      }
+    }
+
+    // 2. Update data di Firestore
     await adminDb.collection('users').doc(id).update(data);
     return { success: true };
   } catch (error: any) {
@@ -81,6 +136,16 @@ export async function updateUser(id: string, data: any) {
 
 export async function deleteUser(id: string) {
   try {
+    // 1. Hapus dari Firebase Authentication (abaikan jika tidak ada)
+    try {
+      await admin.auth().deleteUser(id);
+    } catch (authError: any) {
+      if (authError.code !== 'auth/user-not-found') {
+        throw authError;
+      }
+    }
+
+    // 2. Hapus dokumen dari Firestore
     await adminDb.collection('users').doc(id).delete();
     return { success: true };
   } catch (error: any) {
@@ -93,7 +158,7 @@ export async function fetchRestaurants() {
   try {
     const restosSnap = await adminDb.collection('restaurants').get();
     const usersSnap = await adminDb.collection('users').get();
-    
+
     const usersMap: Record<string, any> = {};
     usersSnap.forEach(doc => {
       usersMap[doc.id] = doc.data();
@@ -112,6 +177,7 @@ export async function fetchRestaurants() {
       return {
         id: doc.id,
         ...data,
+        status: data.status ? data.status.trim() : 'pending',
         lokasi: plainLokasi,
         ownerName: owner.nama || 'Unknown Owner',
         ownerEmail: owner.email || '-',
@@ -198,7 +264,7 @@ export async function fetchRestoDetail(restoId: string) {
       // Firestore 'in' queries support up to 30 items
       const chunks = [];
       for (let i = 0; i < orderIds.length; i += 30) chunks.push(orderIds.slice(i, i + 30));
-      
+
       for (const chunk of chunks) {
         const tagSnap = await adminDb.collection('order_review_tags').where('order_id', 'in', chunk).get();
         tagSnap.forEach(d => {
@@ -234,7 +300,7 @@ export async function fetchRestoDetail(restoId: string) {
       data: {
         id: restoId,
         nama: restoData.nama || '-',
-        status: restoData.status || 'pending',
+        status: restoData.status ? restoData.status.trim() : 'pending',
         jam_buka: restoData.jam_buka || '-',
         url_whatsapp: restoData.url_whatsapp || '-',
         avg_rating: restoData.avg_rating || 0,
@@ -288,7 +354,7 @@ export async function fetchDashboardMetrics() {
       adminDb.collection('restaurants').get(),
       adminDb.collection('orders').where('status', '==', 'completed').get(),
     ]);
-    
+
     let customersCount = 0;
     usersSnap.forEach(doc => {
       if (doc.data().role === 'customer') customersCount++;
@@ -340,12 +406,12 @@ export async function fetchRestoProfits() {
     });
 
     const profitPerResto: Record<string, number> = {};
-    
+
     ordersSnap.forEach(doc => {
       const data = doc.data();
       const rId = data.resto_id;
       if (!rId) return;
-      
+
       let profit = 0;
       if (data.app_profit) {
         profit = data.app_profit;
@@ -385,13 +451,13 @@ export async function fetchRestoProfits() {
 export async function fetchChartData(filter: string) {
   try {
     const ordersSnap = await adminDb.collection('orders').where('status', '==', 'completed').get();
-    
+
     const now = new Date();
-    
+
     // Determine the time boundary based on filter
     let timeBoundary = new Date();
     let numBuckets = 0;
-    
+
     if (filter === '1h') {
       timeBoundary.setHours(now.getHours() - 24);
       numBuckets = 8; // Bucket every 3 hours
@@ -421,7 +487,7 @@ export async function fetchChartData(filter: string) {
     ordersSnap.forEach(doc => {
       const data = doc.data();
       if (!data.created_at) return;
-      
+
       const orderDate = data.created_at.toDate();
       if (orderDate >= timeBoundary) {
         let profit = 0;
@@ -443,7 +509,7 @@ export async function fetchChartData(filter: string) {
       }
     });
 
-    const growth = currentTotal * 0.15; 
+    const growth = currentTotal * 0.15;
 
     return {
       success: true,
@@ -456,6 +522,76 @@ export async function fetchChartData(filter: string) {
     };
   } catch (error: any) {
     console.error('Error fetching chart data:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateRestaurantStatus(id: string, status: 'aktif' | 'suspend' | 'pending' | 'rejected') {
+  try {
+    const restoDoc = await adminDb.collection('restaurants').doc(id).get();
+    if (!restoDoc.exists) {
+      return { success: false, error: 'Restaurant tidak ditemukan.' };
+    }
+
+    const restoData = restoDoc.data();
+    const ownerId = restoData?.owner_id;
+
+    await adminDb.collection('restaurants').doc(id).update({ status });
+
+    // If the restaurant is approved, set the user's role to owner
+    if (status === 'aktif' && ownerId) {
+      await adminDb.collection('users').doc(ownerId).update({ role: 'owner' });
+    } else if ((status === 'rejected' || status === 'suspend') && ownerId) {
+      await adminDb.collection('users').doc(ownerId).update({ role: 'customer' });
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error updating restaurant status:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function createPromo(data: any) {
+  try {
+    const docRef = await adminDb.collection('promo_vouchers').add({
+      kode: data.kode,
+      nama: data.nama,
+      deskripsi: data.deskripsi,
+      nilai_diskon: Number(data.nilai_diskon),
+      is_percent: data.is_percent,
+      mulai: new Date(data.mulai),
+      berakhir: new Date(data.berakhir),
+      is_active: data.is_active !== undefined ? data.is_active : true,
+      resto_id: data.resto_id || null,
+      created_at: new Date(),
+    });
+    return { success: true, id: docRef.id };
+  } catch (error: any) {
+    console.error('Error creating promo:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updatePromo(id: string, data: any) {
+  try {
+    const updateData = { ...data };
+    if (data.mulai) updateData.mulai = new Date(data.mulai);
+    if (data.berakhir) updateData.berakhir = new Date(data.berakhir);
+    await adminDb.collection('promo_vouchers').doc(id).update(updateData);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error updating promo:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deletePromo(id: string) {
+  try {
+    await adminDb.collection('promo_vouchers').doc(id).delete();
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error deleting promo:', error);
     return { success: false, error: error.message };
   }
 }

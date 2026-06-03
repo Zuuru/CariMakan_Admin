@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Search, UserCheck, UserX, Award, Star, Mail, Phone, Calendar, Edit2, Trash2, Plus, Lock } from 'lucide-react';
+import { Search, UserCheck, UserX, Award, Star, Mail, Phone, Calendar, Edit2, Trash2, Plus, Lock, Eye, EyeOff } from 'lucide-react';
 import UserModal from './UserModal';
 
 interface UserData {
@@ -30,6 +30,16 @@ export default function UsersTab({ searchQuery }: UsersTabProps) {
   // Modal state
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingUser, setEditingUser] = React.useState<UserData | null>(null);
+  const [visiblePasswords, setVisiblePasswords] = React.useState<Set<string>>(new Set());
+
+  const togglePasswordVisibility = (uid: string) => {
+    setVisiblePasswords(prev => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
+  };
   
   const loadData = React.useCallback(async () => {
     setLoading(true);
@@ -122,6 +132,8 @@ export default function UsersTab({ searchQuery }: UsersTabProps) {
         if (res.success) {
           loadData();
           setIsModalOpen(false);
+        } else {
+          alert(`Gagal memperbarui user: ${res.error}`);
         }
       } else {
         const { createUser } = await import('@/app/actions');
@@ -129,10 +141,13 @@ export default function UsersTab({ searchQuery }: UsersTabProps) {
         if (res.success) {
           loadData();
           setIsModalOpen(false);
+        } else {
+          alert(`Gagal membuat user: ${res.error}`);
         }
       }
     } catch (error) {
       console.error('Failed to save user:', error);
+      alert('Terjadi kesalahan tak terduga saat menyimpan user.');
     }
   };
 
@@ -324,8 +339,29 @@ export default function UsersTab({ searchQuery }: UsersTabProps) {
                     {/* Password Field */}
                     <td style={{ padding: '16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Lock size={14} /> 
-                        <span style={{ fontFamily: 'monospace' }}>{user.password || '******'}</span>
+                        <Lock size={14} />
+                        <span style={{ fontFamily: 'monospace', letterSpacing: visiblePasswords.has(user.uid) ? 'normal' : '2px' }}>
+                          {user.password
+                            ? (visiblePasswords.has(user.uid) ? user.password : '••••••••')
+                            : <span style={{ color: 'var(--text-muted)', fontFamily: 'inherit', letterSpacing: 'normal' }}>Tidak tersimpan</span>
+                          }
+                        </span>
+                        {user.password && (
+                          <button
+                            onClick={() => togglePasswordVisibility(user.uid)}
+                            title={visiblePasswords.has(user.uid) ? 'Sembunyikan password' : 'Lihat password'}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              color: 'var(--text-muted)',
+                              display: 'inline-flex',
+                              padding: '2px',
+                            }}
+                          >
+                            {visiblePasswords.has(user.uid) ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                        )}
                       </div>
                     </td>
 

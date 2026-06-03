@@ -61,51 +61,91 @@ export default function PromosTab() {
   const [formBerakhir, setFormBerakhir] = React.useState('');
   const [showSuccessAlert, setShowSuccessAlert] = React.useState(false);
 
-  const handleToggleActive = (id: string) => {
-    setPromos((prev) =>
-      prev.map((p) => {
-        if (p.id === id) {
-          return { ...p, is_active: !p.is_active };
-        }
-        return p;
-      })
-    );
+  const handleToggleActive = async (id: string) => {
+    try {
+      const promo = promos.find((p) => p.id === id);
+      if (!promo) return;
+      const newActive = !promo.is_active;
+      const { updatePromo } = await import('@/app/actions');
+      const res = await updatePromo(id, { is_active: newActive });
+      if (res.success) {
+        setPromos((prev) =>
+          prev.map((p) => {
+            if (p.id === id) {
+              return { ...p, is_active: newActive };
+            }
+            return p;
+          })
+        );
+      } else {
+        alert('Gagal mengubah status promo: ' + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Terjadi kesalahan saat mengubah status promo');
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setPromos((prev) => prev.filter((p) => p.id !== id));
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Yakin ingin menghapus voucher ini?')) return;
+    try {
+      const { deletePromo } = await import('@/app/actions');
+      const res = await deletePromo(id);
+      if (res.success) {
+        setPromos((prev) => prev.filter((p) => p.id !== id));
+      } else {
+        alert('Gagal menghapus voucher: ' + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Terjadi kesalahan saat menghapus voucher');
+    }
   };
 
-  const handleCreatePromo = (e: React.FormEvent) => {
+  const handleCreatePromo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formKode || !formNama || !formNilai || !formMulai || !formBerakhir) return;
 
-    const newPromo: PromoVoucher = {
-      id: `PRM00${promos.length + 1}`,
-      kode: formKode.toUpperCase().replace(/\s+/g, ''),
-      nama: formNama,
-      deskripsi: formDeskripsi || 'Promo global CariMakan',
-      nilai_diskon: Number(formNilai),
-      is_percent: formIsPercent,
-      mulai: formMulai,
-      berakhir: formBerakhir,
-      is_active: true,
-      scope: 'global',
-    };
+    try {
+      const { createPromo } = await import('@/app/actions');
+      const promoData = {
+        kode: formKode.toUpperCase().replace(/\s+/g, ''),
+        nama: formNama,
+        deskripsi: formDeskripsi || 'Promo global CariMakan',
+        nilai_diskon: Number(formNilai),
+        is_percent: formIsPercent,
+        mulai: formMulai,
+        berakhir: formBerakhir,
+        is_active: true,
+      };
+      
+      const res = await createPromo(promoData);
+      if (res.success && res.id) {
+        const newPromo: PromoVoucher = {
+          id: res.id,
+          ...promoData,
+          scope: 'global',
+        };
+        setPromos((prev) => [newPromo, ...prev]);
 
-    setPromos((prev) => [newPromo, ...prev]);
-    
-    // Reset Form
-    setFormKode('');
-    setFormNama('');
-    setFormDeskripsi('');
-    setFormNilai(0);
-    setFormMulai('');
-    setFormBerakhir('');
+        // Reset Form
+        setFormKode('');
+        setFormNama('');
+        setFormDeskripsi('');
+        setFormNilai(0);
+        setFormMulai('');
+        setFormBerakhir('');
 
-    // Success Alert
-    setShowSuccessAlert(true);
-    setTimeout(() => setShowSuccessAlert(false), 3000);
+        // Success Alert
+        setShowSuccessAlert(true);
+        setTimeout(() => setShowSuccessAlert(false), 3000);
+      } else {
+        alert('Gagal menambahkan voucher: ' + res.error);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Terjadi kesalahan saat menambahkan voucher');
+    }
   };
 
   return (
