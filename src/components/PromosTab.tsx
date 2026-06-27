@@ -121,6 +121,23 @@ export default function PromosTab() {
       
       const res = await createPromo(promoData);
       if (res.success && res.id) {
+        // 1. Kirim push notification ke semua customer mobile
+        try {
+          const { sendPromoNotification } = await import('@/app/actions');
+          const discountLabel = promoData.is_percent
+            ? `${promoData.nilai_diskon}%`
+            : `Rp ${promoData.nilai_diskon.toLocaleString('id-ID')}`;
+          await sendPromoNotification({
+            title: `Promo Baru! Diskon ${discountLabel} 🎉`,
+            body: `${promoData.nama}: ${promoData.deskripsi}. Gunakan kode "${promoData.kode}" sekarang!`,
+            promoId: res.id,
+            kode: promoData.kode,
+          });
+        } catch (notifErr) {
+          console.error('Gagal kirim notifikasi promo:', notifErr);
+          // Jangan gagalkan flow utama jika notifikasi error
+        }
+
         const newPromo: PromoVoucher = {
           id: res.id,
           ...promoData,
@@ -335,7 +352,7 @@ export default function PromosTab() {
               gap: '8px',
             }}
           >
-            <Check size={16} /> Promo berhasil ditambahkan!
+            <Check size={16} /> Promo berhasil dibuat &amp; notifikasi dikirim ke semua customer! 🔔
           </div>
         )}
 

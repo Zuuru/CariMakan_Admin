@@ -134,6 +134,7 @@ export default function Home() {
           onFilterClick={() => console.log('Filters Clicked')} 
           onProfileClick={() => setShowProfile(!showProfile)}
           isProfileOpen={showProfile}
+          onNotificationClick={() => setActiveTab('restaurants')}
         />
 
         {/* Account Profile Settings Dropdown */}

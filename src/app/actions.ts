@@ -349,10 +349,12 @@ export async function fetchPromos() {
 // Function to fetch metrics for dashboard
 export async function fetchDashboardMetrics() {
   try {
+    const SUKSES_STATUS = new Set(['completed', 'paid', 'success', 'settlement']);
+
     const [usersSnap, restosSnap, ordersSnap] = await Promise.all([
       adminDb.collection('users').get(),
       adminDb.collection('restaurants').get(),
-      adminDb.collection('orders').where('status', '==', 'completed').get(),
+      adminDb.collection('orders').get(), // ambil semua, filter manual
     ]);
 
     let customersCount = 0;
@@ -363,11 +365,14 @@ export async function fetchDashboardMetrics() {
     let totalProfit = 0;
     ordersSnap.forEach(doc => {
       const data = doc.data();
-      // Assume app_profit field exists, else fallback to 7% of total_price
+      const status = (data.status || '').toLowerCase();
+      if (!SUKSES_STATUS.has(status)) return; // skip order non-sukses
+
+      const amount = data.totalPrice || data.total_price || 0;
       if (data.app_profit) {
         totalProfit += data.app_profit;
-      } else if (data.total_price) {
-        totalProfit += data.total_price * 0.07;
+      } else if (amount) {
+        totalProfit += amount * 0.10;
       }
     });
 
@@ -395,9 +400,11 @@ export async function fetchDashboardMetrics() {
 
 export async function fetchRestoProfits() {
   try {
+    const SUKSES_STATUS = new Set(['completed', 'paid', 'success', 'settlement']);
+
     const [restosSnap, ordersSnap] = await Promise.all([
       adminDb.collection('restaurants').get(),
-      adminDb.collection('orders').where('status', '==', 'completed').get(),
+      adminDb.collection('orders').get(), // ambil semua, filter manual
     ]);
 
     const restosMap: Record<string, any> = {};
@@ -409,14 +416,18 @@ export async function fetchRestoProfits() {
 
     ordersSnap.forEach(doc => {
       const data = doc.data();
+      const status = (data.status || '').toLowerCase();
+      if (!SUKSES_STATUS.has(status)) return; // skip order non-sukses
+
       const rId = data.resto_id;
       if (!rId) return;
 
       let profit = 0;
+      const amount = data.totalPrice || data.total_price || 0;
       if (data.app_profit) {
         profit = data.app_profit;
-      } else if (data.total_price) {
-        profit = data.total_price * 0.07;
+      } else if (amount) {
+        profit = amount * 0.10;
       }
 
       if (!profitPerResto[rId]) profitPerResto[rId] = 0;
@@ -450,7 +461,11 @@ export async function fetchRestoProfits() {
 
 export async function fetchChartData(filter: string) {
   try {
-    const ordersSnap = await adminDb.collection('orders').where('status', '==', 'completed').get();
+    // Ambil SEMUA order, lalu filter status sukses secara manual
+    // karena Flutter app memakai status: 'paid' | 'success' | 'settlement' | 'completed'
+    const ordersSnap = await adminDb.collection('orders').get();
+
+    const SUKSES_STATUS = new Set(['completed', 'paid', 'success', 'settlement']);
 
     const now = new Date();
 
@@ -486,15 +501,22 @@ export async function fetchChartData(filter: string) {
 
     ordersSnap.forEach(doc => {
       const data = doc.data();
-      if (!data.created_at) return;
 
-      const orderDate = data.created_at.toDate();
+      // Filter hanya status sukses
+      const status = (data.status || '').toLowerCase();
+      if (!SUKSES_STATUS.has(status)) return;
+
+      const dateField = data.created_at || data.orderDate;
+      if (!dateField) return;
+
+      const orderDate = dateField.toDate();
       if (orderDate >= timeBoundary) {
         let profit = 0;
+        const amount = data.totalPrice || data.total_price || 0;
         if (data.app_profit) {
           profit = data.app_profit;
-        } else if (data.total_price) {
-          profit = data.total_price * 0.07;
+        } else if (amount) {
+          profit = amount * 0.10;
         }
 
         currentTotal += profit;
@@ -505,7 +527,7 @@ export async function fetchChartData(filter: string) {
         if (bucketIdx < 0) bucketIdx = 0;
 
         profitBuckets[bucketIdx] += profit;
-        expenseBuckets[bucketIdx] += profit * (0.5 + Math.random() * 0.3); // Mock expense
+        expenseBuckets[bucketIdx] += (amount - profit); // Biaya = pendapatan resto
       }
     });
 
@@ -595,3 +617,203 @@ export async function deletePromo(id: string) {
     return { success: false, error: error.message };
   }
 }
+
+/**
+ * Kirim push notification promo ke semua customer di mobile.
+ * Menulis ke koleksi `notifications` dengan userId: 'all',
+ * sehingga NotificationService di Flutter akan menangkapnya dan
+ * menampilkan local notification ke semua user yang sedang online.
+ */
+export async function sendPromoNotification({
+  title,
+  body,
+  promoId,
+  kode,
+}: {
+  title: string;
+  body: string;
+  promoId?: string;
+  kode?: string;
+}) {
+  try {
+    const notificationRef = adminDb.collection('notifications').doc();
+    await notificationRef.set({
+      id: notificationRef.id,
+      userId: 'all',
+      title,
+      body,
+      type: 'promo',
+      isRead: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      data: {
+        ...(promoId && { promoId }),
+        ...(kode && { kode }),
+      },
+    });
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error sending promo notification:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ==========================================
+// Integrasi Midtrans API Dinamis
+// ==========================================
+const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY || '';
+const encodedServerKey = Buffer.from(MIDTRANS_SERVER_KEY + ':').toString('base64');
+
+export async function fetchFinanceStats() {
+  try {
+    const ordersSnap = await adminDb.collection('orders').orderBy('orderDate', 'desc').get();
+    
+    const usersSnap = await adminDb.collection('users').get();
+    const restosSnap = await adminDb.collection('restaurants').get();
+
+    const usersMap: Record<string, any> = {};
+    usersSnap.forEach(d => usersMap[d.id] = d.data());
+
+    const restosMap: Record<string, any> = {};
+    restosSnap.forEach(d => restosMap[d.id] = d.data());
+
+    let totalVolume = 0;
+    let totalOrders = 0;
+    let successOrders = 0;
+    
+    // For foods
+    const foodAggregator: Record<string, { name: string, resto: string, count: number, revenue: number }> = {};
+    
+    // For payment methods
+    let gopay = 0, qris = 0, ovo = 0, bank = 0, shopeepay = 0, totalPaymentCount = 0;
+
+    const txsList: any[] = [];
+
+    const formatCurrency = (val: number) => {
+      if (val >= 1000000) return `Rp ${(val / 1000000).toFixed(1)}jt`;
+      if (val >= 1000) return `Rp ${(val / 1000).toFixed(0)}rb`;
+      return `Rp ${val.toLocaleString('id-ID')}`;
+    };
+
+    // Iterate through all orders
+    for (let i = 0; i < ordersSnap.docs.length; i++) {
+      const doc = ordersSnap.docs[i];
+      const data = doc.data();
+
+      const amount = data.totalPrice || data.total_price || 0;
+      let status = data.status || 'pending';
+      let method = (data.paymentMethod || data.payment_method || 'QRIS').toUpperCase();
+      const dateObj = data.orderDate ? data.orderDate.toDate() : (data.created_at ? data.created_at.toDate() : new Date());
+
+      totalOrders++;
+      if (status === 'success' || status === 'paid' || status === 'settlement' || status === 'completed') {
+        successOrders++;
+        totalVolume += amount;
+      }
+
+      // Aggregate payment methods
+      totalPaymentCount++;
+      if (method.includes('GOPAY')) gopay++;
+      else if (method.includes('QRIS')) qris++;
+      else if (method.includes('OVO')) ovo++;
+      else if (method.includes('SHOPEEPAY') || method.includes('SHOPEE')) shopeepay++;
+      else bank++;
+
+      // Aggregate foods
+      const restoId = data.resto_id;
+      const restoName = restosMap[restoId]?.nama || 'Restoran';
+      const items = data.items || [];
+      items.forEach((item: any) => {
+        const menuName = item.menuName || item.nama_menu || 'Menu';
+        const qty = item.quantity || item.qty || 1;
+        const price = item.unitTotalPrice || item.totalPrice || item.basePrice || 0;
+        
+        const key = `${restoId}_${menuName}`;
+        if (!foodAggregator[key]) {
+          foodAggregator[key] = { name: menuName, resto: restoName, count: 0, revenue: 0 };
+        }
+        foodAggregator[key].count += qty;
+        foodAggregator[key].revenue += price * qty; // if price is unit price, or just price if it's already total
+      });
+
+      // Build Transaction list (only top 50 for UI performance)
+      if (txsList.length < 50) {
+        const customerName = data.userName || (usersMap[data.userId]?.nama || usersMap[data.user_id]?.nama) || 'Pelanggan';
+        txsList.push({
+          id: doc.id,
+          orderId: data.id || doc.id,
+          customerName: customerName,
+          restoName: restoName,
+          amount: amount,
+          method: method.substring(0, 10),
+          status: (status === 'paid' || status === 'completed' || status === 'success') ? 'success' : (status === 'cancelled' || status === 'failed' ? 'failed' : 'pending'),
+          date: dateObj.toLocaleString('id-ID'),
+        });
+      }
+    }
+
+    // Sinkronisasi status riil ke Midtrans API untuk 50 transaksi terbaru
+    await Promise.all(txsList.map(async (tx) => {
+      try {
+        const midtransRes = await fetch(`https://api.sandbox.midtrans.com/v2/${tx.id}/status`, {
+          headers: {
+            'Authorization': `Basic ${encodedServerKey}`,
+            'Accept': 'application/json'
+          }
+        });
+        if (midtransRes.ok) {
+          const mData = await midtransRes.json();
+          if (mData.transaction_status === 'settlement' || mData.transaction_status === 'capture') {
+             tx.status = 'success';
+          } else if (mData.transaction_status === 'pending') {
+             tx.status = 'pending';
+          } else if (mData.transaction_status === 'cancel' || mData.transaction_status === 'expire' || mData.transaction_status === 'deny') {
+             tx.status = 'failed';
+          }
+          if (mData.payment_type) {
+             const pt = mData.payment_type.toUpperCase();
+             if (pt.includes('GOPAY')) tx.method = 'GOPAY';
+             else if (pt.includes('QRIS')) tx.method = 'QRIS';
+             else if (pt.includes('SHOPEEPAY')) tx.method = 'SHOPEEPAY';
+             else if (pt.includes('BANK') || pt.includes('TRANSFER')) tx.method = 'BANK';
+             else tx.method = pt.substring(0, 10);
+          }
+        }
+      } catch (e) {
+        // Abaikan error midtrans, gunakan status firestore
+      }
+    }));
+
+    // Prepare Return Data
+    const popularFoods = Object.values(foodAggregator)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4)
+      .map(f => ({
+        name: f.name,
+        resto: f.resto,
+        ordersCount: f.count,
+        revenue: formatCurrency(f.revenue)
+      }));
+
+    return {
+      success: true,
+      data: {
+        txs: txsList,
+        volumeTransaksi: totalVolume,
+        successRate: totalOrders > 0 ? ((successOrders / totalOrders) * 100).toFixed(1) : '0.0',
+        rataRataKeranjang: successOrders > 0 ? (totalVolume / successOrders) : 0,
+        popularFoods: popularFoods,
+        paymentRatios: {
+          gopay: totalPaymentCount > 0 ? Math.round((gopay / totalPaymentCount) * 100) : 0,
+          qris: totalPaymentCount > 0 ? Math.round((qris / totalPaymentCount) * 100) : 0,
+          ovo: totalPaymentCount > 0 ? Math.round(((ovo + shopeepay) / totalPaymentCount) * 100) : 0,
+          bank: totalPaymentCount > 0 ? Math.round((bank / totalPaymentCount) * 100) : 0,
+        }
+      }
+    };
+  } catch (error: any) {
+    console.error('Error fetching finance stats:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+

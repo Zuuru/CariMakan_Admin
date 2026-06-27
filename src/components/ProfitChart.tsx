@@ -72,13 +72,6 @@ export default function ProfitChart() {
     return { x, y, profit: pData, label: label };
   });
 
-  const pointsRed = labels.map((_, i) => {
-    const eData = expenseData[i] || 0;
-    const x = paddingX + (i * (width - 2 * paddingX)) / (labels.length - 1);
-    const y = height - paddingY - (eData * (height - 2 * paddingY)) / maxDataVal;
-    return { x, y, expense: eData };
-  });
-
   // Generate SVG path for smooth curves (Bezier)
   const getCurvePath = (points: { x: number; y: number }[]) => {
     if (!points.length) return '';
@@ -94,7 +87,6 @@ export default function ProfitChart() {
   };
 
   const pathGreen = getCurvePath(pointsGreen);
-  const pathRed = getCurvePath(pointsRed);
 
   // Path for gradient fills under the green curve
   const pathGreenFill = pointsGreen.length > 0 ? `${pathGreen} L ${pointsGreen[pointsGreen.length - 1].x} ${height - paddingY} L ${pointsGreen[0].x} ${height - paddingY} Z` : '';
@@ -346,16 +338,7 @@ export default function ProfitChart() {
             {/* SVG gradients under curve */}
             <path d={pathGreenFill} fill="url(#greenGrad)" />
 
-            {/* Red Line Chart (comparisons) - thin & elegant */}
-            <path
-              d={pathRed}
-              fill="none"
-              stroke="var(--color-dark-red)"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-
-            {/* Green Line Chart (profits) - thin & elegant */}
+            {/* Green Line Chart (profits) */}
             <path
               d={pathGreen}
               fill="none"
@@ -367,7 +350,7 @@ export default function ProfitChart() {
             {/* Interactive invisible hover zones for each month */}
             {pointsGreen.map((point, i) => (
               <g key={i}>
-                {/* Visual points - small, clean, elegant */}
+                {/* Visual points */}
                 <circle
                   cx={point.x}
                   cy={point.y}
@@ -376,15 +359,6 @@ export default function ProfitChart() {
                   stroke="var(--color-mint)"
                   strokeWidth="2"
                   style={{ transition: 'all 0.2s', cursor: 'pointer' }}
-                />
-
-                <circle
-                  cx={pointsRed[i].x}
-                  cy={pointsRed[i].y}
-                  r="4"
-                  fill="#FFFFFF"
-                  stroke="var(--color-dark-red)"
-                  strokeWidth="2"
                 />
 
                 {/* Hover trigger zone */}
@@ -401,7 +375,7 @@ export default function ProfitChart() {
                       y: point.y,
                       label: point.label,
                       profit: formatCurrency(point.profit),
-                      expense: formatCurrency(pointsRed[i].expense),
+                      expense: '',
                       index: i,
                     });
                   }}
@@ -452,12 +426,8 @@ export default function ProfitChart() {
                 {hoveredPoint.label}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', fontSize: '12px' }}>
-                <span style={{ opacity: 0.8 }}>Pendapatan:</span>
+                <span style={{ opacity: 0.8 }}>Profit:</span>
                 <span style={{ fontWeight: '700', color: 'var(--color-mint)' }}>{hoveredPoint.profit}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', fontSize: '12px', marginTop: '2px' }}>
-                <span style={{ opacity: 0.8 }}>Operasional:</span>
-                <span style={{ fontWeight: '700', color: 'var(--color-dark-red)' }}>{hoveredPoint.expense}</span>
               </div>
             </div>
           )}

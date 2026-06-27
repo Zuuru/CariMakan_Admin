@@ -9,10 +9,13 @@ interface HeaderProps {
   onFilterClick?: () => void;
   onProfileClick?: () => void;
   isProfileOpen?: boolean;
+  onNotificationClick?: () => void;
 }
 
-export default function Header({ searchQuery, setSearchQuery, onFilterClick, onProfileClick, isProfileOpen }: HeaderProps) {
+export default function Header({ searchQuery, setSearchQuery, onFilterClick, onProfileClick, isProfileOpen, onNotificationClick }: HeaderProps) {
   const [currentDate, setCurrentDate] = React.useState('29 Apr 2026');
+  const [pendingRestos, setPendingRestos] = React.useState<any[]>([]);
+  const [showNotifications, setShowNotifications] = React.useState(false);
 
   React.useEffect(() => {
     const today = new Date();
@@ -26,6 +29,25 @@ export default function Header({ searchQuery, setSearchQuery, onFilterClick, onP
     } catch (e) {
       // fallback
     }
+
+    // Fetch pending restaurants for notifications
+    async function fetchPending() {
+      try {
+        const { fetchRestaurants } = await import('@/app/actions');
+        const res = await fetchRestaurants();
+        if (res.success && res.data) {
+          const pending = res.data.filter((r: any) => r.status === 'pending');
+          setPendingRestos(pending);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    fetchPending();
+    
+    // Refresh notifications every 30 seconds
+    const interval = setInterval(fetchPending, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -119,32 +141,117 @@ export default function Header({ searchQuery, setSearchQuery, onFilterClick, onP
         </div>
 
         {/* Circular Notification Bell */}
-        <button 
-          style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '50px',
-            backgroundColor: 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            color: 'var(--text-primary)',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.02)',
-            transition: 'all 0.2s ease',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-1px)';
-            e.currentTarget.style.borderColor = 'var(--text-primary)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.borderColor = 'var(--border-color)';
-          }}
-        >
-          <Bell size={18} />
-        </button>
+        <div style={{ position: 'relative' }}>
+          <button 
+            onClick={() => setShowNotifications(!showNotifications)}
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '50px',
+              backgroundColor: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: 'var(--text-primary)',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.02)',
+              transition: 'all 0.2s ease',
+              position: 'relative',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.borderColor = 'var(--text-primary)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.borderColor = 'var(--border-color)';
+            }}
+          >
+            <Bell size={18} />
+            {pendingRestos.length > 0 && (
+              <span 
+                style={{
+                  position: 'absolute',
+                  top: '2px',
+                  right: '2px',
+                  backgroundColor: '#EF4444',
+                  color: 'white',
+                  fontSize: '10px',
+                  fontWeight: 'bold',
+                  borderRadius: '50%',
+                  width: '16px',
+                  height: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '2px solid var(--bg-card)',
+                }}
+              >
+                {pendingRestos.length}
+              </span>
+            )}
+          </button>
+
+          {/* Notifications Dropdown */}
+          {showNotifications && (
+            <div 
+              style={{
+                position: 'absolute',
+                top: '50px',
+                right: '0',
+                width: '320px',
+                backgroundColor: 'var(--bg-card)',
+                borderRadius: '12px',
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
+                border: '1px solid var(--border-color)',
+                zIndex: 1000,
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                Notifikasi
+              </div>
+              <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                {pendingRestos.length > 0 ? (
+                  pendingRestos.map((resto, idx) => (
+                    <div 
+                      key={idx}
+                      onClick={() => {
+                        setShowNotifications(false);
+                        if (onNotificationClick) onNotificationClick();
+                      }}
+                      style={{
+                        padding: '12px 16px',
+                        borderBottom: '1px solid var(--border-color)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        transition: 'background-color 0.2s',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-layout)'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                        Request Menjadi Restoran
+                      </span>
+                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        {resto.ownerName} mendaftar restoran "{resto.nama}".
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ padding: '16px', textAlign: 'center', fontSize: '13px', color: 'var(--text-muted)' }}>
+                    Tidak ada notifikasi baru.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Circular Profile Avatar J with dropdown arrow */}
         <div 

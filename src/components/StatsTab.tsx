@@ -34,25 +34,47 @@ interface PopularFood {
 }
 
 export default function StatsTab() {
-  const [txs, setTxs] = React.useState<Transaction[]>([
-    { id: 'TX001', orderId: 'ORD-9874', customerName: 'M. Oksa Setyarso', restoName: 'Ideologist Cafe', amount: 85000, method: 'GOPAY', status: 'success', date: '18/12/2026 14:23' },
-    { id: 'TX002', orderId: 'ORD-9875', customerName: 'Adila Dimaz', restoName: 'Parjo Sipodang', amount: 120000, method: 'QRIS', status: 'success', date: '18/12/2026 14:31' },
-    { id: 'TX003', orderId: 'ORD-9876', customerName: 'Zulfikri Arya', restoName: 'Nyctiphilly Cafe', amount: 45000, method: 'OVO', status: 'pending', date: '18/12/2026 14:45' },
-    { id: 'TX004', orderId: 'ORD-9877', customerName: 'Paulus Ale', restoName: 'Burjo Idaman', amount: 25000, method: 'BANK', status: 'success', date: '18/12/2026 14:50' },
-    { id: 'TX005', orderId: 'ORD-9878', customerName: 'Budi Santoso', restoName: 'Ideologist Cafe', amount: 65000, method: 'SHOPEEPAY', status: 'failed', date: '18/12/2026 15:02' },
-    { id: 'TX006', orderId: 'ORD-9879', customerName: 'Siti Rahma', restoName: 'Parjo Mulawarman', amount: 95000, method: 'GOPAY', status: 'success', date: '18/12/2026 15:15' },
-    { id: 'TX007', orderId: 'ORD-9880', customerName: 'Dewi Lestari', restoName: 'Nyctiphilly Cafe', amount: 155000, method: 'QRIS', status: 'success', date: '18/12/2026 15:30' },
-  ]);
+  const [txs, setTxs] = React.useState<Transaction[]>([]);
+  const [stats, setStats] = React.useState<any>({
+    volumeTransaksi: 0,
+    successRate: '0.0',
+    rataRataKeranjang: 0,
+    popularFoods: [],
+    paymentRatios: { gopay: 0, qris: 0, ovo: 0, bank: 0 }
+  });
+
+  React.useEffect(() => {
+    async function loadData() {
+      try {
+        const { fetchFinanceStats } = await import('@/app/actions');
+        const res = await fetchFinanceStats();
+        if (res.success && res.data) {
+          setTxs(res.data.txs);
+          setStats({
+            volumeTransaksi: res.data.volumeTransaksi,
+            successRate: res.data.successRate,
+            rataRataKeranjang: res.data.rataRataKeranjang,
+            popularFoods: res.data.popularFoods,
+            paymentRatios: res.data.paymentRatios,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to fetch finance stats:', err);
+      }
+    }
+    loadData();
+  }, []);
 
   const [search, setSearch] = React.useState('');
   const [methodFilter, setMethodFilter] = React.useState<'ALL' | 'GOPAY' | 'QRIS' | 'OVO' | 'BANK'>('ALL');
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const itemsPerPage = 6;
 
-  const popularFoods: PopularFood[] = [
-    { name: 'Nasi Goreng Spesial', resto: 'Burjo Idaman', ordersCount: 1420, revenue: 'Rp 35.5jt' },
-    { name: 'Es Kopi Susu Aren', resto: 'Ideologist Cafe', ordersCount: 980, revenue: 'Rp 19.6jt' },
-    { name: 'Ayam Geprek Mozzarella', resto: 'Parjo Sipodang', ordersCount: 850, revenue: 'Rp 21.2jt' },
-    { name: 'Matcha Latte Premium', resto: 'Nyctiphilly Cafe', ordersCount: 620, revenue: 'Rp 15.5jt' },
-  ];
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
+  };
+
+  const popularFoods: PopularFood[] = stats.popularFoods;
 
   // Filter transactions
   const filteredTxs = txs.filter((tx) => {
@@ -66,6 +88,14 @@ export default function StatsTab() {
     return matchesSearch && matchesMethod;
   });
 
+  const totalPages = Math.ceil(filteredTxs.length / itemsPerPage);
+  const currentTxs = filteredTxs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  // Reset page when search or filter changes
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [search, methodFilter]);
+
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '28px', padding: '32px 32px 32px 32px' }}>
       
@@ -77,8 +107,8 @@ export default function StatsTab() {
           </div>
           <div>
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>Volume Transaksi</span>
-            <h4 style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'var(--font-outfit)', marginTop: '2px' }}>Rp 3,450,000,000</h4>
-            <span style={{ fontSize: '11px', color: '#10B981', fontWeight: '500' }}>+12.4% dari bulan lalu</span>
+            <h4 style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'var(--font-outfit)', marginTop: '2px' }}>{formatCurrency(stats.volumeTransaksi)}</h4>
+            <span style={{ fontSize: '11px', color: '#10B981', fontWeight: '500' }}>Updated realtime</span>
           </div>
         </div>
 
@@ -88,8 +118,8 @@ export default function StatsTab() {
           </div>
           <div>
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>Pembayaran Sukses</span>
-            <h4 style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'var(--font-outfit)', marginTop: '2px' }}>98.2% Rate</h4>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Rata-rata payout 2 menit</span>
+            <h4 style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'var(--font-outfit)', marginTop: '2px' }}>{stats.successRate}% Rate</h4>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Status dari Midtrans</span>
           </div>
         </div>
 
@@ -99,14 +129,14 @@ export default function StatsTab() {
           </div>
           <div>
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>Rata-rata Keranjang</span>
-            <h4 style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'var(--font-outfit)', marginTop: '2px' }}>Rp 78,500</h4>
-            <span style={{ fontSize: '11px', color: 'var(--color-purple)', fontWeight: '500' }}>Didominasi menu Cafe</span>
+            <h4 style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'var(--font-outfit)', marginTop: '2px' }}>{formatCurrency(stats.rataRataKeranjang)}</h4>
+            <span style={{ fontSize: '11px', color: 'var(--color-purple)', fontWeight: '500' }}>Per Order Sukses</span>
           </div>
         </div>
       </div>
 
       {/* Grid: Popular foods vs Payment methods breakdown */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '28px', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '28px', alignItems: 'stretch' }}>
         
         {/* Left Column: Transaction list */}
         <div
@@ -121,6 +151,7 @@ export default function StatsTab() {
             display: 'flex',
             flexDirection: 'column',
             gap: '20px',
+            height: '100%',
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
@@ -156,9 +187,9 @@ export default function StatsTab() {
             </div>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ flex: 1, overflowX: 'auto', overflowY: 'auto', maxHeight: '500px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
+              <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--bg-card)', zIndex: 1 }}>
                 <tr style={{ borderBottom: '1.5px solid var(--border-color)', color: 'var(--text-muted)' }}>
                   <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase' }}>ID Tx</th>
                   <th style={{ padding: '12px 14px', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase' }}>Order ID</th>
@@ -170,15 +201,15 @@ export default function StatsTab() {
                 </tr>
               </thead>
               <tbody>
-                {filteredTxs.map((tx) => (
+                {currentTxs.map((tx) => (
                   <tr
                     key={tx.id}
                     style={{ borderBottom: '1px solid var(--border-color)', fontSize: '13.5px', transition: 'all 0.2s' }}
                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-layout)'}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   >
-                    <td style={{ padding: '14px', fontWeight: '600', color: 'var(--color-purple)' }}>{tx.id}</td>
-                    <td style={{ padding: '14px', color: 'var(--text-secondary)' }}>{tx.orderId}</td>
+                    <td style={{ padding: '14px', fontWeight: '600', color: 'var(--color-purple)' }}>{tx.id.substring(0, 8)}...</td>
+                    <td style={{ padding: '14px', color: 'var(--text-secondary)' }}>{tx.orderId.substring(0, 8)}...</td>
                     <td style={{ padding: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>{tx.customerName}</td>
                     <td style={{ padding: '14px', color: 'var(--text-primary)' }}>{tx.restoName}</td>
                     <td style={{ padding: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>Rp {tx.amount.toLocaleString('id-ID')}</td>
@@ -208,6 +239,27 @@ export default function StatsTab() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination Controls */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+              Menampilkan {currentTxs.length} dari {filteredTxs.length} data (Halaman {currentPage} dari {totalPages || 1})
+            </span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: currentPage === 1 ? 'var(--bg-layout)' : 'var(--bg-card)', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', fontSize: '12px', color: 'var(--text-primary)' }}>
+                Prev
+              </button>
+              <button 
+                disabled={currentPage === totalPages || totalPages === 0}
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: currentPage === totalPages || totalPages === 0 ? 'var(--bg-layout)' : 'var(--bg-card)', cursor: currentPage === totalPages || totalPages === 0 ? 'not-allowed' : 'pointer', fontSize: '12px', color: 'var(--text-primary)' }}>
+                Next
+              </button>
+            </div>
           </div>
         </div>
 
@@ -297,21 +349,21 @@ export default function StatsTab() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '600' }}>
                   <span>GoPay</span>
-                  <span style={{ color: 'var(--color-purple)' }}>45%</span>
+                  <span style={{ color: 'var(--color-purple)' }}>{stats.paymentRatios.gopay}%</span>
                 </div>
                 <div style={{ width: '100%', height: '8px', borderRadius: '50px', backgroundColor: 'var(--bg-layout)', overflow: 'hidden' }}>
-                  <div style={{ width: '45%', height: '100%', borderRadius: '50px', background: 'var(--grad-purple)' }} />
+                  <div style={{ width: `${stats.paymentRatios.gopay}%`, height: '100%', borderRadius: '50px', background: 'var(--grad-purple)' }} />
                 </div>
               </div>
 
               {/* QRIS */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '600' }}>
-                  <span>QRIS (M-Banking)</span>
-                  <span style={{ color: 'var(--color-mint)' }}>30%</span>
+                  <span>QRIS</span>
+                  <span style={{ color: 'var(--color-mint)' }}>{stats.paymentRatios.qris}%</span>
                 </div>
                 <div style={{ width: '100%', height: '8px', borderRadius: '50px', backgroundColor: 'var(--bg-layout)', overflow: 'hidden' }}>
-                  <div style={{ width: '30%', height: '100%', borderRadius: '50px', backgroundColor: 'var(--color-mint)' }} />
+                  <div style={{ width: `${stats.paymentRatios.qris}%`, height: '100%', borderRadius: '50px', backgroundColor: 'var(--color-mint)' }} />
                 </div>
               </div>
 
@@ -319,21 +371,21 @@ export default function StatsTab() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '600' }}>
                   <span>OVO / ShopeePay</span>
-                  <span style={{ color: 'var(--color-magenta)' }}>15%</span>
+                  <span style={{ color: 'var(--color-magenta)' }}>{stats.paymentRatios.ovo}%</span>
                 </div>
                 <div style={{ width: '100%', height: '8px', borderRadius: '50px', backgroundColor: 'var(--bg-layout)', overflow: 'hidden' }}>
-                  <div style={{ width: '15%', height: '100%', borderRadius: '50px', background: 'var(--grad-magenta)' }} />
+                  <div style={{ width: `${stats.paymentRatios.ovo}%`, height: '100%', borderRadius: '50px', background: 'var(--grad-magenta)' }} />
                 </div>
               </div>
 
               {/* Bank Transfer */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '600' }}>
-                  <span>Transfer Bank (Midtrans Virtual Account)</span>
-                  <span style={{ color: 'var(--color-yellow)' }}>10%</span>
+                  <span>Transfer Bank</span>
+                  <span style={{ color: 'var(--color-yellow)' }}>{stats.paymentRatios.bank}%</span>
                 </div>
                 <div style={{ width: '100%', height: '8px', borderRadius: '50px', backgroundColor: 'var(--bg-layout)', overflow: 'hidden' }}>
-                  <div style={{ width: '10%', height: '100%', borderRadius: '50px', background: 'var(--grad-yellow)' }} />
+                  <div style={{ width: `${stats.paymentRatios.bank}%`, height: '100%', borderRadius: '50px', background: 'var(--grad-yellow)' }} />
                 </div>
               </div>
             </div>
