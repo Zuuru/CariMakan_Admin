@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Search, Plus, Ticket, Calendar, ToggleLeft, ToggleRight, Check, Trash2, Percent, DollarSign, Users } from 'lucide-react';
+import { Search, Plus, Ticket, Calendar, ToggleLeft, ToggleRight, Check, Trash2, Percent, DollarSign, Users, Pencil, X, Save } from 'lucide-react';
 
 interface PromoVoucher {
   id: string;
@@ -59,7 +59,42 @@ export default function PromosTab() {
   const [formIsPercent, setFormIsPercent] = React.useState(true);
   const [formMulai, setFormMulai] = React.useState('');
   const [formBerakhir, setFormBerakhir] = React.useState('');
+  const [formFotoUri, setFormFotoUri] = React.useState('');
+  const [formMaksPotongan, setFormMaksPotongan] = React.useState('');
+  const [formMinBelanja, setFormMinBelanja] = React.useState('');
+  const [formMinItem, setFormMinItem] = React.useState('');
   const [showSuccessAlert, setShowSuccessAlert] = React.useState(false);
+  const [editingPromoId, setEditingPromoId] = React.useState<string | null>(null);
+
+  const handleEditClick = (promo: PromoVoucher) => {
+    setEditingPromoId(promo.id);
+    setFormKode(promo.kode || '');
+    setFormNama(promo.nama || '');
+    setFormDeskripsi(promo.deskripsi || '');
+    setFormNilai(promo.nilai_diskon || 0);
+    setFormIsPercent(promo.is_percent !== undefined ? promo.is_percent : true);
+    setFormMulai(promo.mulai || '');
+    setFormBerakhir(promo.berakhir || '');
+    setFormFotoUri(promo.foto_uri || '');
+    setFormMaksPotongan(promo.maks_potongan ? String(promo.maks_potongan) : '');
+    setFormMinBelanja(promo.min_belanja ? String(promo.min_belanja) : '');
+    setFormMinItem(promo.min_item ? String(promo.min_item) : '');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPromoId(null);
+    setFormKode('');
+    setFormNama('');
+    setFormDeskripsi('');
+    setFormNilai(0);
+    setFormIsPercent(true);
+    setFormMulai('');
+    setFormBerakhir('');
+    setFormFotoUri('');
+    setFormMaksPotongan('');
+    setFormMinBelanja('');
+    setFormMinItem('');
+  };
 
   const handleToggleActive = async (id: string) => {
     try {
@@ -104,12 +139,13 @@ export default function PromosTab() {
 
   const handleCreatePromo = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formKode || !formNama || !formNilai || !formMulai || !formBerakhir) return;
+    if (!formNama || !formNilai || !formMulai || !formBerakhir) return;
 
     try {
-      const { createPromo } = await import('@/app/actions');
+      const { createPromo, updatePromo } = await import('@/app/actions');
+      const generatedKode = formKode ? formKode.toUpperCase().replace(/\s+/g, '') : `PROMO${Math.floor(Math.random() * 10000)}`;
       const promoData = {
-        kode: formKode.toUpperCase().replace(/\s+/g, ''),
+        kode: generatedKode,
         nama: formNama,
         deskripsi: formDeskripsi || 'Promo global CariMakan',
         nilai_diskon: Number(formNilai),
@@ -117,51 +153,71 @@ export default function PromosTab() {
         mulai: formMulai,
         berakhir: formBerakhir,
         is_active: true,
+        foto_uri: formFotoUri || null,
+        maks_potongan: formMaksPotongan ? Number(formMaksPotongan) : null,
+        min_belanja: formMinBelanja ? Number(formMinBelanja) : 0,
+        min_item: formMinItem ? Number(formMinItem) : 0,
       };
       
-      const res = await createPromo(promoData);
-      if (res.success && res.id) {
-        // 1. Kirim push notification ke semua customer mobile
-        try {
-          const { sendPromoNotification } = await import('@/app/actions');
-          const discountLabel = promoData.is_percent
-            ? `${promoData.nilai_diskon}%`
-            : `Rp ${promoData.nilai_diskon.toLocaleString('id-ID')}`;
-          await sendPromoNotification({
-            title: `Promo Baru! Diskon ${discountLabel} 🎉`,
-            body: `${promoData.nama}: ${promoData.deskripsi}. Gunakan kode "${promoData.kode}" sekarang!`,
-            promoId: res.id,
-            kode: promoData.kode,
-          });
-        } catch (notifErr) {
-          console.error('Gagal kirim notifikasi promo:', notifErr);
-          // Jangan gagalkan flow utama jika notifikasi error
+      if (editingPromoId) {
+        // Mode Edit
+        const res = await updatePromo(editingPromoId, promoData);
+        if (res.success) {
+          setPromos((prev) =>
+            prev.map((p) => {
+              if (p.id === editingPromoId) {
+                return { ...p, ...promoData } as PromoVoucher;
+              }
+              return p;
+            })
+          );
+          handleCancelEdit();
+          setShowSuccessAlert(true);
+          setTimeout(() => setShowSuccessAlert(false), 3000);
+        } else {
+          alert('Gagal mengupdate voucher: ' + res.error);
         }
-
-        const newPromo: PromoVoucher = {
-          id: res.id,
-          ...promoData,
-          scope: 'global',
-        };
-        setPromos((prev) => [newPromo, ...prev]);
-
-        // Reset Form
-        setFormKode('');
-        setFormNama('');
-        setFormDeskripsi('');
-        setFormNilai(0);
-        setFormMulai('');
-        setFormBerakhir('');
-
-        // Success Alert
-        setShowSuccessAlert(true);
-        setTimeout(() => setShowSuccessAlert(false), 3000);
       } else {
-        alert('Gagal menambahkan voucher: ' + res.error);
+        // Mode Buat Baru
+        const res = await createPromo(promoData);
+        if (res.success && res.id) {
+          // 1. Kirim push notification ke semua customer mobile
+          try {
+            const { sendPromoNotification } = await import('@/app/actions');
+            const discountLabel = promoData.is_percent
+              ? `${promoData.nilai_diskon}%`
+              : `Rp ${promoData.nilai_diskon.toLocaleString('id-ID')}`;
+            await sendPromoNotification({
+              title: `Promo Baru! Diskon ${discountLabel} 🎉`,
+              body: `${promoData.nama}: ${promoData.deskripsi}. Gunakan kode "${promoData.kode}" sekarang!`,
+              promoId: res.id,
+              kode: promoData.kode,
+            });
+          } catch (notifErr) {
+            console.error('Gagal kirim notifikasi promo:', notifErr);
+            // Jangan gagalkan flow utama jika notifikasi error
+          }
+
+          const newPromo: PromoVoucher = {
+            id: res.id,
+            ...promoData,
+            scope: 'global',
+          };
+          setPromos((prev) => [newPromo, ...prev]);
+
+          // Reset Form
+          handleCancelEdit();
+
+          // Success Alert
+          setShowSuccessAlert(true);
+          setTimeout(() => setShowSuccessAlert(false), 3000);
+        } else {
+          alert('Gagal menambahkan voucher: ' + res.error);
+        }
       }
     } catch (err) {
       console.error(err);
-      alert('Terjadi kesalahan saat menambahkan voucher');
+      alert('Terjadi kesalahan saat memproses voucher');
     }
   };
 
@@ -285,6 +341,27 @@ export default function PromosTab() {
                   {promo.is_active ? <ToggleRight size={38} style={{ color: '#10B981' }} /> : <ToggleLeft size={38} />}
                 </button>
 
+                {/* Edit button */}
+                <button
+                  onClick={() => handleEditClick(promo)}
+                  style={{
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--color-purple)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '8px',
+                    borderRadius: '50px',
+                    transition: 'background-color 0.2s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(73,11,255,0.1)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  title="Edit Voucher"
+                >
+                  <Pencil size={16} />
+                </button>
+
                 {/* Delete button */}
                 <button
                   onClick={() => handleDelete(promo.id)}
@@ -329,10 +406,10 @@ export default function PromosTab() {
       >
         <div>
           <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'var(--font-outfit)' }}>
-            Buat Voucher Baru
+            {editingPromoId ? 'Edit Voucher' : 'Buat Voucher Baru'}
           </h3>
           <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-            Tambahkan voucher diskon baru berskala global.
+            {editingPromoId ? 'Edit detail voucher yang sudah ada.' : 'Tambahkan voucher diskon baru berskala global.'}
           </span>
         </div>
 
@@ -357,34 +434,12 @@ export default function PromosTab() {
         )}
 
         <form onSubmit={handleCreatePromo} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Code */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Kode Promo *</label>
-            <input
-              type="text"
-              placeholder="CONTOH: DISKONBARU"
-              value={formKode}
-              onChange={(e) => setFormKode(e.target.value)}
-              required
-              style={{
-                padding: '10px 14px',
-                borderRadius: '8px',
-                border: '1px solid var(--border-color)',
-                fontSize: '14px',
-                outline: 'none',
-                textTransform: 'uppercase',
-                backgroundColor: 'var(--bg-layout)',
-                color: 'var(--text-primary)',
-              }}
-            />
-          </div>
-
           {/* Name */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Nama Voucher *</label>
+            <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Nama Promo *</label>
             <input
               type="text"
-              placeholder="Nama display voucher..."
+              placeholder="Contoh: Promo Makan Siang"
               value={formNama}
               onChange={(e) => setFormNama(e.target.value)}
               required
@@ -404,10 +459,11 @@ export default function PromosTab() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Deskripsi *</label>
             <textarea
-              placeholder="Tulis detail diskon voucher..."
+              placeholder="Contoh: Hemat 20% untuk order di atas 50rb"
               value={formDeskripsi}
               onChange={(e) => setFormDeskripsi(e.target.value)}
-              rows={3}
+              required
+              rows={2}
               style={{
                 padding: '10px 14px',
                 borderRadius: '8px',
@@ -421,62 +477,35 @@ export default function PromosTab() {
             />
           </div>
 
-          {/* Discount type toggle */}
+          {/* Code */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Tipe & Nilai Diskon *</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-              <button
-                type="button"
-                onClick={() => setFormIsPercent(true)}
-                style={{
-                  padding: '8px',
-                  borderRadius: '6px',
-                  border: '1px solid',
-                  borderColor: formIsPercent ? 'var(--color-purple)' : 'var(--border-color)',
-                  backgroundColor: formIsPercent ? 'rgba(73, 11, 255, 0.08)' : 'transparent',
-                  color: formIsPercent ? 'var(--color-purple)' : 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '4px',
-                }}
-              >
-                <Percent size={14} /> Persentase (%)
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormIsPercent(false)}
-                style={{
-                  padding: '8px',
-                  borderRadius: '6px',
-                  border: '1px solid',
-                  borderColor: !formIsPercent ? 'var(--color-purple)' : 'var(--border-color)',
-                  backgroundColor: !formIsPercent ? 'rgba(73, 11, 255, 0.08)' : 'transparent',
-                  color: !formIsPercent ? 'var(--color-purple)' : 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '4px',
-                }}
-              >
-                <DollarSign size={14} /> Nominal Tetap
-              </button>
-            </div>
-            
+            <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Kode Promo (Opsional)</label>
             <input
-              type="number"
-              placeholder={formIsPercent ? "Nilai diskon (contoh: 10 untuk 10%)" : "Nilai diskon rupiah (contoh: 10000)"}
-              value={formNilai || ''}
-              onChange={(e) => setFormNilai(Number(e.target.value))}
-              required
-              min={1}
-              max={formIsPercent ? 100 : 1000000}
+              type="text"
+              placeholder="Contoh: MAKAN20"
+              value={formKode}
+              onChange={(e) => setFormKode(e.target.value)}
+              style={{
+                padding: '10px 14px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                fontSize: '14px',
+                outline: 'none',
+                textTransform: 'uppercase',
+                backgroundColor: 'var(--bg-layout)',
+                color: 'var(--text-primary)',
+              }}
+            />
+          </div>
+
+          {/* Image Link */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Link Gambar Promo (Opsional)</label>
+            <input
+              type="text"
+              placeholder="https://contoh.com/gambar-promo.jpg"
+              value={formFotoUri}
+              onChange={(e) => setFormFotoUri(e.target.value)}
               style={{
                 padding: '10px 14px',
                 borderRadius: '8px',
@@ -489,38 +518,91 @@ export default function PromosTab() {
             />
           </div>
 
-          {/* Dates */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>Mulai Berlaku *</label>
-              <input
-                type="date"
-                value={formMulai}
-                onChange={(e) => setFormMulai(e.target.value)}
-                required
+          {/* Discount type toggle */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Jenis & Nilai Diskon *</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '4px' }}>
+              <button
+                type="button"
+                onClick={() => setFormIsPercent(true)}
                 style={{
                   padding: '8px',
+                  borderRadius: '6px',
+                  border: '1px solid',
+                  borderColor: formIsPercent ? 'var(--color-purple)' : 'var(--border-color)',
+                  backgroundColor: formIsPercent ? 'var(--color-purple)' : 'transparent',
+                  color: formIsPercent ? '#FFF' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <Percent size={14} /> Persen (%)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormIsPercent(false)}
+                style={{
+                  padding: '8px',
+                  borderRadius: '6px',
+                  border: '1px solid',
+                  borderColor: !formIsPercent ? 'var(--color-purple)' : 'var(--border-color)',
+                  backgroundColor: !formIsPercent ? 'var(--color-purple)' : 'transparent',
+                  color: !formIsPercent ? '#FFF' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <DollarSign size={14} /> Nominal (Rp)
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>{formIsPercent ? 'Nilai Diskon (%)' : 'Nilai Diskon (Rp)'}</label>
+              <input
+                type="number"
+                placeholder={formIsPercent ? "Contoh: 20 (artinya 20%)" : "Contoh: 10000"}
+                value={formNilai || ''}
+                onChange={(e) => setFormNilai(Number(e.target.value))}
+                required
+                min={1}
+                max={formIsPercent ? 100 : 1000000}
+                style={{
+                  padding: '10px 14px',
                   borderRadius: '8px',
                   border: '1px solid var(--border-color)',
-                  fontSize: '12px',
+                  fontSize: '14px',
                   outline: 'none',
                   backgroundColor: 'var(--bg-layout)',
                   color: 'var(--text-primary)',
                 }}
               />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>Berakhir Pada *</label>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+              <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>Batas Maks. Potongan / Rp (Opsional)</label>
               <input
-                type="date"
-                value={formBerakhir}
-                onChange={(e) => setFormBerakhir(e.target.value)}
-                required
+                type="number"
+                placeholder="Contoh: 50000 (kosongkan jika tidak ada)"
+                value={formMaksPotongan}
+                onChange={(e) => setFormMaksPotongan(e.target.value)}
+                min={0}
                 style={{
-                  padding: '8px',
+                  padding: '10px 14px',
                   borderRadius: '8px',
                   border: '1px solid var(--border-color)',
-                  fontSize: '12px',
+                  fontSize: '14px',
                   outline: 'none',
                   backgroundColor: 'var(--bg-layout)',
                   color: 'var(--text-primary)',
@@ -529,32 +611,151 @@ export default function PromosTab() {
             </div>
           </div>
 
+          {/* Syarat Penggunaan */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Syarat Penggunaan</label>
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Isi 0 atau kosongkan jika tidak ada syarat minimum.</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>Min. Belanja (Rp)</label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={formMinBelanja}
+                  onChange={(e) => setFormMinBelanja(e.target.value)}
+                  min={0}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    fontSize: '13px',
+                    outline: 'none',
+                    backgroundColor: 'var(--bg-layout)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>Min. Item</label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={formMinItem}
+                  onChange={(e) => setFormMinItem(e.target.value)}
+                  min={0}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    fontSize: '13px',
+                    outline: 'none',
+                    backgroundColor: 'var(--bg-layout)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Masa Berlaku */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Masa Berlaku</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>Tanggal Mulai *</label>
+                <input
+                  type="date"
+                  value={formMulai}
+                  onChange={(e) => setFormMulai(e.target.value)}
+                  required
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    fontSize: '12px',
+                    outline: 'none',
+                    backgroundColor: 'var(--bg-layout)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>Tanggal Berakhir *</label>
+                <input
+                  type="date"
+                  value={formBerakhir}
+                  onChange={(e) => setFormBerakhir(e.target.value)}
+                  required
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    fontSize: '12px',
+                    outline: 'none',
+                    backgroundColor: 'var(--bg-layout)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Submit */}
-          <button
-            type="submit"
-            style={{
-              padding: '12px',
-              borderRadius: 'var(--radius-md)',
-              backgroundColor: 'var(--color-purple)',
-              color: '#FFF',
-              border: 'none',
-              fontWeight: '700',
-              fontSize: '14px',
-              fontFamily: 'var(--font-outfit)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              boxShadow: '0 4px 10px rgba(73,11,255,0.2)',
-              marginTop: '10px',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#3800D6'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--color-purple)'}
-          >
-            <Plus size={18} /> Simpan Voucher
-          </button>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+            {editingPromoId && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border-color)',
+                  fontWeight: '600',
+                  fontSize: '14px',
+                  fontFamily: 'var(--font-outfit)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-layout)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <X size={18} /> Batal
+              </button>
+            )}
+            <button
+              type="submit"
+              style={{
+                flex: editingPromoId ? 2 : 1,
+                padding: '12px',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: 'var(--color-purple)',
+                color: '#FFF',
+                border: 'none',
+                fontWeight: '700',
+                fontSize: '14px',
+                fontFamily: 'var(--font-outfit)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 10px rgba(73,11,255,0.2)',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#3800D6'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--color-purple)'}
+            >
+              {editingPromoId ? <Save size={18} /> : <Plus size={18} />}
+              {editingPromoId ? 'Simpan Perubahan' : 'Simpan Voucher'}
+            </button>
+          </div>
         </form>
       </div>
     </div>

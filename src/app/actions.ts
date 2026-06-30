@@ -331,12 +331,10 @@ export async function fetchPromos() {
   try {
     const snapshot = await adminDb.collection('promo_vouchers').get();
     const promos = snapshot.docs.map(doc => {
-      const data = doc.data();
+      const data = serializeFirestoreDoc(doc.data());
       return {
         id: doc.id,
         ...data,
-        mulai: data.mulai ? data.mulai.toDate().toISOString() : null,
-        berakhir: data.berakhir ? data.berakhir.toDate().toISOString() : null,
       };
     });
     return { success: true, data: promos };
@@ -560,12 +558,14 @@ export async function updateRestaurantStatus(id: string, status: 'aktif' | 'susp
 
     await adminDb.collection('restaurants').doc(id).update({ status });
 
-    // If the restaurant is approved, set the user's role to owner
+    // If the restaurant is approved or unsuspended, restore owner role
     if (status === 'aktif' && ownerId) {
       await adminDb.collection('users').doc(ownerId).update({ role: 'owner' });
-    } else if ((status === 'rejected' || status === 'suspend') && ownerId) {
+    } else if (status === 'rejected' && ownerId) {
+      // Only rejected permanently removes owner role
       await adminDb.collection('users').doc(ownerId).update({ role: 'customer' });
     }
+    // Note: 'suspend' only hides the restaurant from mobile app, does NOT change owner role
 
     return { success: true };
   } catch (error: any) {
@@ -577,7 +577,7 @@ export async function updateRestaurantStatus(id: string, status: 'aktif' | 'susp
 export async function createPromo(data: any) {
   try {
     const docRef = await adminDb.collection('promo_vouchers').add({
-      kode: data.kode,
+      kode: data.kode || '',
       nama: data.nama,
       deskripsi: data.deskripsi,
       nilai_diskon: Number(data.nilai_diskon),
@@ -586,6 +586,10 @@ export async function createPromo(data: any) {
       berakhir: new Date(data.berakhir),
       is_active: data.is_active !== undefined ? data.is_active : true,
       resto_id: data.resto_id || null,
+      image_url: data.foto_uri || data.image_url || null,
+      maks_potongan: data.maks_potongan ? Number(data.maks_potongan) : null,
+      min_belanja: data.min_belanja ? Number(data.min_belanja) : 0,
+      min_item: data.min_item ? Number(data.min_item) : 0,
       created_at: new Date(),
     });
     return { success: true, id: docRef.id };
@@ -600,6 +604,11 @@ export async function updatePromo(id: string, data: any) {
     const updateData = { ...data };
     if (data.mulai) updateData.mulai = new Date(data.mulai);
     if (data.berakhir) updateData.berakhir = new Date(data.berakhir);
+    // Normalize foto_uri → image_url agar konsisten dengan field yang dibaca Flutter
+    if ('foto_uri' in updateData) {
+      updateData.image_url = updateData.foto_uri || null;
+      delete updateData.foto_uri;
+    }
     await adminDb.collection('promo_vouchers').doc(id).update(updateData);
     return { success: true };
   } catch (error: any) {
@@ -650,6 +659,40 @@ export async function sendPromoNotification({
         ...(kode && { kode }),
       },
     });
+
+    // Ambil FCM tokens dari semua customer
+    const usersSnap = await adminDb.collection('users')
+      .where('role', '==', 'customer')
+      .get();
+      
+    const tokens: string[] = [];
+    usersSnap.forEach(doc => {
+      const data = doc.data();
+      if (data.fcm_token) {
+        tokens.push(data.fcm_token);
+      }
+    });
+
+    if (tokens.length > 0) {
+      // Firebase sendEachForMulticast membatasi 500 token sekali kirim
+      // Tapi untuk case ini asumsikan < 500 token, jika banyak, batch sendiri.
+      const message = {
+        notification: {
+          title,
+          body,
+        },
+        data: {
+          type: 'promo',
+          promoId: promoId || '',
+          kode: kode || '',
+        },
+        tokens: tokens.slice(0, 500), // Batas aman Firebase SDK
+      };
+      
+      const response = await admin.messaging().sendEachForMulticast(message);
+      console.log(`Successfully sent message: ${response.successCount} messages were sent successfully`);
+    }
+
     return { success: true };
   } catch (error: any) {
     console.error('Error sending promo notification:', error);

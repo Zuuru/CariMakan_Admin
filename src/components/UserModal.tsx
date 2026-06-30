@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { X, Eye, EyeOff } from 'lucide-react';
+import { X } from 'lucide-react';
 
 interface UserModalProps {
   isOpen: boolean;
@@ -22,7 +22,7 @@ export default function UserModal({ isOpen, onClose, onSubmit, initialData }: Us
     foto_url: '',
     fcm_token: '',
   });
-  const [showPassword, setShowPassword] = React.useState(false);
+
 
   React.useEffect(() => {
     if (initialData) {
@@ -30,7 +30,7 @@ export default function UserModal({ isOpen, onClose, onSubmit, initialData }: Us
         nama: initialData.nama || '',
         email: initialData.email || '',
         url_whatsapp: initialData.url_whatsapp || initialData.phone || '',
-        password: initialData.password || '',
+        password: '',
         role: initialData.role || 'customer',
         poin_reward: initialData.poin_reward || 0,
         status: initialData.status || 'aktif',
@@ -132,30 +132,7 @@ export default function UserModal({ isOpen, onClose, onSubmit, initialData }: Us
             />
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '14px', fontWeight: '500' }}>Password</label>
-            <div style={{ position: 'relative' }}>
-              <input 
-                type={showPassword ? 'text' : 'password'}
-                required={!initialData}
-                value={formData.password}
-                onChange={e => setFormData({...formData, password: e.target.value})}
-                placeholder={initialData ? "Biarkan kosong jika tidak ingin mengubah password" : "Password user"}
-                style={{ padding: '10px 40px 10px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-layout)', color: 'var(--text-primary)', width: '100%', boxSizing: 'border-box' }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(p => !p)}
-                style={{
-                  position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
-                  background: 'transparent', border: 'none', cursor: 'pointer',
-                  color: 'var(--text-secondary)', display: 'inline-flex', padding: '2px',
-                }}
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-          </div>
+
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <label style={{ fontSize: '14px', fontWeight: '500' }}>Foto Profile (URL)</label>

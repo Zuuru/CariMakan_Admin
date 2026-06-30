@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Search, UserCheck, UserX, Award, Star, Mail, Phone, Calendar, Edit2, Trash2, Plus, Lock, Eye, EyeOff } from 'lucide-react';
+import { Search, UserCheck, UserX, Award, Star, Mail, Phone, Calendar, Edit2, Trash2, Plus } from 'lucide-react';
 import UserModal from './UserModal';
 
 interface UserData {
@@ -30,16 +30,7 @@ export default function UsersTab({ searchQuery }: UsersTabProps) {
   // Modal state
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingUser, setEditingUser] = React.useState<UserData | null>(null);
-  const [visiblePasswords, setVisiblePasswords] = React.useState<Set<string>>(new Set());
 
-  const togglePasswordVisibility = (uid: string) => {
-    setVisiblePasswords(prev => {
-      const next = new Set(prev);
-      if (next.has(uid)) next.delete(uid);
-      else next.add(uid);
-      return next;
-    });
-  };
   
   const loadData = React.useCallback(async () => {
     setLoading(true);
@@ -298,7 +289,6 @@ export default function UsersTab({ searchQuery }: UsersTabProps) {
               <tr style={{ borderBottom: '1.5px solid var(--border-color)', color: 'var(--text-muted)' }}>
                 <th style={{ padding: '14px 16px', fontSize: '13px', fontWeight: '600', fontFamily: 'var(--font-outfit)', textTransform: 'uppercase' }}>User</th>
                 <th style={{ padding: '14px 16px', fontSize: '13px', fontWeight: '600', fontFamily: 'var(--font-outfit)', textTransform: 'uppercase' }}>Hubungi</th>
-                <th style={{ padding: '14px 16px', fontSize: '13px', fontWeight: '600', fontFamily: 'var(--font-outfit)', textTransform: 'uppercase' }}>Password</th>
                 <th style={{ padding: '14px 16px', fontSize: '13px', fontWeight: '600', fontFamily: 'var(--font-outfit)', textTransform: 'uppercase' }}>Role</th>
                 <th style={{ padding: '14px 16px', fontSize: '13px', fontWeight: '600', fontFamily: 'var(--font-outfit)', textTransform: 'uppercase' }}>Poin Reward</th>
                 <th style={{ padding: '14px 16px', fontSize: '13px', fontWeight: '600', fontFamily: 'var(--font-outfit)', textTransform: 'uppercase' }}>Status</th>
@@ -308,7 +298,7 @@ export default function UsersTab({ searchQuery }: UsersTabProps) {
             <tbody>
               {loading ? (
                  <tr>
-                   <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                   <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
                      Memuat data pengguna...
                    </td>
                  </tr>
@@ -333,35 +323,6 @@ export default function UsersTab({ searchQuery }: UsersTabProps) {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Mail size={12} /> {user.email}</span>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Phone size={12} /> {user.phone}</span>
-                      </div>
-                    </td>
-
-                    {/* Password Field */}
-                    <td style={{ padding: '16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Lock size={14} />
-                        <span style={{ fontFamily: 'monospace', letterSpacing: visiblePasswords.has(user.uid) ? 'normal' : '2px' }}>
-                          {user.password
-                            ? (visiblePasswords.has(user.uid) ? user.password : '••••••••')
-                            : <span style={{ color: 'var(--text-muted)', fontFamily: 'inherit', letterSpacing: 'normal' }}>Tidak tersimpan</span>
-                          }
-                        </span>
-                        {user.password && (
-                          <button
-                            onClick={() => togglePasswordVisibility(user.uid)}
-                            title={visiblePasswords.has(user.uid) ? 'Sembunyikan password' : 'Lihat password'}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              cursor: 'pointer',
-                              color: 'var(--text-muted)',
-                              display: 'inline-flex',
-                              padding: '2px',
-                            }}
-                          >
-                            {visiblePasswords.has(user.uid) ? <EyeOff size={14} /> : <Eye size={14} />}
-                          </button>
-                        )}
                       </div>
                     </td>
 
@@ -476,7 +437,7 @@ export default function UsersTab({ searchQuery }: UsersTabProps) {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
                     Tidak ada pengguna ditemukan.
                   </td>
                 </tr>
