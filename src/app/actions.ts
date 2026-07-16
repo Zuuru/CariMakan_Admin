@@ -196,7 +196,7 @@ export async function fetchRestoDetail(restoId: string) {
     const [restoSnap, menusSnap, ordersSnap, restoBadgesSnap, badgesSnap, usersSnap] = await Promise.all([
       adminDb.collection('restaurants').doc(restoId).get(),
       adminDb.collection('menus').where('resto_id', '==', restoId).get(),
-      adminDb.collection('orders').where('resto_id', '==', restoId).where('status', '==', 'completed').get(),
+      adminDb.collection('orders').where('resto_id', '==', restoId).get(),
       adminDb.collection('resto_badges').where('resto_id', '==', restoId).get(),
       adminDb.collection('badges').get(),
       adminDb.collection('users').get(),
@@ -216,11 +216,24 @@ export async function fetchRestoDetail(restoId: string) {
       return { id: d.data().badge_id, nama: b.nama || '-', icon: b.icon || '' };
     });
 
-    // Process menus
-    const menus = menusSnap.docs.map(d => ({
-      id: d.id,
-      ...d.data(),
-    }));
+    // Process menus — serialize any Firestore Timestamp fields to plain strings
+    const menus = menusSnap.docs.map(d => {
+      const raw = d.data();
+      return {
+        id: d.id,
+        resto_id: raw.resto_id ?? null,
+        nama: raw.nama ?? '-',
+        kategori: raw.kategori ?? null,
+        deskripsi: raw.deskripsi ?? null,
+        urutan: raw.urutan ?? null,
+        harga: raw.harga ?? 0,
+        image_url: raw.image_url ?? null,
+        is_available: raw.is_available ?? true,
+        tersedia: raw.is_available ?? true,
+        created_at: raw.created_at ? raw.created_at.toDate().toISOString() : null,
+        updated_at: raw.updated_at ? raw.updated_at.toDate().toISOString() : null,
+      };
+    });
 
     // Process orders + aggregate profits per day
     const profitByDay: Record<string, number> = {};
@@ -229,24 +242,36 @@ export async function fetchRestoDetail(restoId: string) {
     let totalOrders = 0;
     const orderList: any[] = [];
 
+    const SUKSES_STATUS = new Set(['completed', 'success', 'paid', 'settlement']);
+
     ordersSnap.forEach(d => {
       const o = d.data();
-      const orderDate = o.created_at ? o.created_at.toDate() : new Date();
+      const status = o.status || '';
+
+      // Hanya hitung order yang benar-benar selesai/sukses
+      if (!SUKSES_STATUS.has(status)) return;
+
+      // Gunakan orderDate atau created_at (sama seperti fetchFinanceStats)
+      const orderDate = o.orderDate ? o.orderDate.toDate()
+        : o.created_at ? o.created_at.toDate()
+        : new Date();
+
       const dayKey = orderDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
-      const profit = o.app_profit || (o.total_price ? o.total_price * 0.07 : 0);
+      const totalPrice = o.total_price || o.totalPrice || 0;
+      const profit = o.app_profit || totalPrice * 0.07;
 
       if (!profitByDay[dayKey]) profitByDay[dayKey] = 0;
       profitByDay[dayKey] += profit;
       totalProfit += profit;
-      totalRevenue += o.total_price || 0;
+      totalRevenue += totalPrice;
       totalOrders++;
 
-      const customer = usersMap[o.user_id] || {};
+      const customer = usersMap[o.user_id] || usersMap[o.userId] || {};
       orderList.push({
         id: d.id,
-        customerName: customer.nama || 'Pelanggan',
-        tipe: o.tipe_pesanan,
-        total_price: o.total_price,
+        customerName: customer.nama || o.userName || 'Pelanggan',
+        tipe: o.tipe_pesanan || o.orderType || '-',
+        total_price: totalPrice,
         app_profit: profit,
         created_at: orderDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
       });
